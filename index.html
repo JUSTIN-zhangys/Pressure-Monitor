@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>8通道液体压力实时监控看板</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="header">
+        <div class="nav">
+            <div>
+                <h1 data-i18n="app.title">8通道压力实时监控看板</h1>
+                <span class="ver-badge" id="verBadge"></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <button class="btn lang-btn" id="langBtn" title="中/EN">中</button>
+                <button class="btn" id="connectBtn"><i class="fas fa-plug"></i> <span data-i18n="btn.connect">连接串口</span></button>
+                <button class="btn" id="pauseBtn" style="display:none;"><i class="fas fa-pause"></i> <span data-i18n="btn.pause">暂停</span></button>
+                <button class="btn" id="resumeBtn" style="display:none;"><i class="fas fa-play"></i> <span data-i18n="btn.resume">恢复</span></button>
+                <button class="btn btn-stop" id="stopBtn" style="display:none;"><i class="fas fa-stop"></i> <span data-i18n="btn.stop">停止</span></button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- 串口参数设置 -->
+        <div class="card" style="margin-bottom:20px;">
+            <div class="card-header"><span><i class="fas fa-cog"></i> <span data-i18n="card.serial">串口参数</span></span></div>
+            <div style="padding:1.5rem; display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); gap:12px;">
+                <div>
+                    <label data-i18n="label.baud">波特率</label><br>
+                    <select id="baudRate" style="width:100%;background:#334155;color:#e2e8f0;border:1px solid #475569;padding:8px 10px;border-radius:8px;font-size:0.9rem;outline:none;">
+                        <option value="9600">9600</option>
+                        <option value="19200">19200</option>
+                        <option value="38400">38400</option>
+                        <option value="57600">57600</option>
+                        <option value="115200" selected>115200</option>
+                        <option value="230400">230400</option>
+                        <option value="460800">460800</option>
+                        <option value="921600">921600</option>
+                    </select>
+                </div>
+                <div>
+                    <label data-i18n="label.port">端口</label><br>
+                    <div style="display:flex;gap:6px;">
+                        <select id="portSelect" style="flex:1;background:#334155;color:#e2e8f0;border:1px solid #475569;padding:8px 10px;border-radius:8px;font-size:0.9rem;outline:none;">
+                            <option value="" data-i18n="label.selectPort">-- 请选择或扫描端口 --</option>
+                        </select>
+                        <button class="btn sm" id="scanPortBtn" title="扫描端口" style="padding:8px 12px;"><i class="fas fa-sync-alt"></i></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主看板 -->
+        <div id="mainDashboard" style="display:none;">
+            <!-- 数据概览 -->
+            <div class="card" style="margin-bottom:20px;">
+                <div class="card-header">
+                    <span><i class="fas fa-table"></i> <span data-i18n="card.overview">数据概览</span></span>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <span class="storage-badge" id="storageBadge" style="display:none;"><i class="fas fa-database"></i> <span id="storageCount">0</span></span>
+                        <span id="status" style="color:#4ade80;" data-i18n="status.ready">● 就绪</span>
+                    </div>
+                </div>
+                <div id="historyBar" class="history-bar" style="display:none;">
+                    <div class="history-controls">
+                        <span class="history-label"><i class="fas fa-history"></i> <span data-i18n="card.history">历史回放</span></span>
+                        <select id="timeRange" class="range-select">
+                            <option value="60" data-i18n="label.recent1m">最近1分钟</option>
+                            <option value="300" data-i18n="label.recent5m">最近5分钟</option>
+                            <option value="1800" data-i18n="label.recent30m">最近30分钟</option>
+                            <option value="3600" data-i18n="label.recent1h">最近1小时</option>
+                            <option value="custom" data-i18n="label.custom">自定义</option>
+                        </select>
+                        <div id="customRange" class="custom-range" style="display:none;"><input type="datetime-local" id="rangeFrom" class="datetime-input" /><span data-i18n="label.to">至</span><input type="datetime-local" id="rangeTo" class="datetime-input" /></div>
+                        <button class="btn-sm" id="loadHistoryBtn"><i class="fas fa-search"></i> <span data-i18n="btn.load">加载</span></button>
+                        <button class="btn-sm" id="exportCSVBtn"><i class="fas fa-file-csv"></i> <span data-i18n="btn.exportCSV">导出CSV</span></button>
+                        <button class="btn-sm btn-sm-outline" id="backToLiveBtn" style="display:none;"><i class="fas fa-play"></i> <span data-i18n="btn.backLive">返回实时</span></button>
+                    </div>
+                </div>
+                <div class="overview-grid" id="overviewBar">
+                    <!-- JS dynamically fills channel stat cards -->
+                </div>
+            </div>
+
+            <!-- 对比看板 -->
+            <div class="card" style="margin-bottom:20px;" id="compareCard">
+                <div class="card-header">
+                    <span><i class="fas fa-balance-scale"></i> <span data-i18n="card.compare">多通道对比分析</span></span>
+                    <div class="compare-toggles" id="compareToggles">
+                        <!-- JS fills in toggle checkboxes -->
+                    </div>
+                </div>
+                <div style="position:relative;height:350px;padding:8px;">
+                    <canvas id="compareChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 8通道独立趋势图 -->
+            <div class="chart-grid" id="chartGrid">
+                <!-- JS dynamically fills channel charts -->
+            </div>
+
+            <!-- 系统日志 -->
+            <div class="card">
+                <div class="card-header">
+                    <span><i class="fas fa-terminal"></i> <span data-i18n="card.log">系统日志</span></span>
+                    <div class="log-stats">
+                        <span class="stat-info">INFO <span class="count">0</span></span>
+                        <span class="stat-warn">WARN <span class="count">0</span></span>
+                        <span class="stat-error">ERROR <span class="count">0</span></span>
+                    </div>
+                </div>
+                <div class="log-toolbar">
+                    <div class="log-search"><i class="fas fa-search"></i><input type="text" id="logSearch" placeholder="搜索日志..."></div>
+                    <div class="log-actions">
+                        <button class="btn-sm" id="exportLogBtn" title="导出日志"><i class="fas fa-download"></i> <span data-i18n="btn.export">导出</span></button>
+                        <button class="btn-sm btn-sm-danger" id="clearLogBtn" title="清空日志"><i class="fas fa-trash"></i> <span data-i18n="btn.clear">清空</span></button>
+                    </div>
+                </div>
+                <div id="debugLog" class="debug" data-i18n="placeholder.waiting">等待数据...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JS 模块按依赖顺序加载 -->
+    <script src="js/i18n.js"></script>
+    <script src="js/debug.js"></script>
+    <script src="js/parser.js"></script>
+    <script src="js/storage.js"></script>
+    <script src="js/chart.js"></script>
+    <script src="js/serial.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
